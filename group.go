@@ -7,23 +7,24 @@ import (
 
 // Group represents a group of tasks running concurrently.
 type Group struct {
-	wg   sync.WaitGroup
-	ctx  context.Context
-	fold func(acc, err error) error
-	err  error
-	mu   sync.Mutex
+	conf *config
+
+	wg  sync.WaitGroup
+	ctx context.Context
+	err error
+	mu  sync.Mutex
 }
 
-func New(ctx context.Context) *Group {
+func New(ctx context.Context, opts ...Option) *Group {
 	return &Group{
+		conf: newConfig(opts),
 		ctx:  ctx,
-		fold: appendError,
 	}
 }
 
-func WithCancel(ctx context.Context) (*Group, context.CancelFunc) {
+func WithCancel(ctx context.Context, opts ...Option) (*Group, context.CancelFunc) {
 	ctx, cancel := context.WithCancel(ctx)
-	return New(ctx), cancel
+	return New(ctx, opts...), cancel
 }
 
 func (g *Group) Go(f func(ctx context.Context) error) {
@@ -36,7 +37,7 @@ func (g *Group) Go(f func(ctx context.Context) error) {
 		g.mu.Lock()
 		defer g.mu.Unlock()
 
-		g.err = g.fold(g.err, err)
+		g.err = g.conf.foldFunc(g.err, err)
 	}()
 }
 

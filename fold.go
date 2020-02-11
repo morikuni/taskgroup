@@ -51,7 +51,7 @@ func (me *MultiError) Append(err error) {
 	me.errors = append(me.errors, err)
 }
 
-func appendError(acc, err error) error {
+func AppendError(acc, err error) error {
 	if err == nil {
 		return acc
 	}
