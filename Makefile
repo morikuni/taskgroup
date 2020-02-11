@@ -1,6 +1,7 @@
 .PHONY: test
 test:
-	go test -count 1 -v -race ./...
+	go test -v -race -count 1 ./...
 
-mod:
-	go mod tidy
+.PHONY: coverage
+coverage:
+	go test -v -race -count 1 -covermode=atomic -coverprofile=coverage.out ./...
