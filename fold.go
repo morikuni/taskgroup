@@ -29,18 +29,40 @@ func (me *MultiError) Error() string {
 	return b.String()
 }
 
-func appendError(acc, err error) error {
+func (me *MultiError) Errors() []error {
+	return me.errors
+}
+
+func (me *MultiError) First() error {
+	if len(me.errors) == 0 {
+		return nil
+	}
+
+	return me.errors[0]
+}
+
+func (me *MultiError) Append(err error) {
 	const defaultSize = 8
 
+	if me.errors == nil {
+		me.errors = make([]error, 0, defaultSize)
+	}
+
+	me.errors = append(me.errors, err)
+}
+
+func appendError(acc, err error) error {
 	if err == nil {
 		return acc
 	}
 
 	if acc == nil {
-		return &MultiError{append(make([]error, 0, defaultSize), err)}
+		var me MultiError
+		me.Append(err)
+		return &me
 	}
 
 	me := acc.(*MultiError)
-	me.errors = append(me.errors, err)
+	me.Append(err)
 	return me
 }
