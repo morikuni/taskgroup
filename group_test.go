@@ -46,22 +46,25 @@ func TestGroup(t *testing.T) {
 	}
 }
 
-func TestWithCancel(t *testing.T) {
-	g, cancel := taskgroup.WithCancel(context.Background())
+func TestFailFast(t *testing.T) {
+	g, cancel := taskgroup.FailFast(context.Background())
 	defer cancel()
+
+	errA := errors.New("a")
 
 	var counter int64
 	g.Go(func(ctx context.Context) error {
 		atomic.AddInt64(&counter, 1)
-		return nil
+		return errA
 	})
 	g.Go(func(ctx context.Context) error {
 		atomic.AddInt64(&counter, 1)
 		return nil
 	})
 	g.Go(func(ctx context.Context) error {
+		time.Sleep(time.Millisecond)
 		atomic.AddInt64(&counter, 1)
-		return nil
+		return errors.New("b")
 	})
 	g.Go(func(ctx context.Context) error {
 		select {
@@ -69,15 +72,13 @@ func TestWithCancel(t *testing.T) {
 		case <-ctx.Done():
 			return nil
 		}
-		atomic.AddInt64(&counter, 1)
+		t.Fatal("should not come here")
 		return nil
 	})
 
-	cancel()
-
 	err := g.Wait()
-	if err != nil {
-		t.Fatalf("error: %v", err)
+	if want, got := errA, err; want != got {
+		t.Fatalf("want %#v, got %#v", want, got)
 	}
 
 	if want, got := int64(3), counter; want != got {

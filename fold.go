@@ -66,3 +66,11 @@ func AppendError(acc, err error) error {
 	me.Append(err)
 	return me
 }
+
+func TakeFirst(acc, err error) error {
+	if acc != nil {
+		return acc
+	}
+
+	return err
+}

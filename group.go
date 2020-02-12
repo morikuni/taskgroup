@@ -22,9 +22,17 @@ func New(ctx context.Context, opts ...Option) *Group {
 	}
 }
 
-func WithCancel(ctx context.Context, opts ...Option) (*Group, context.CancelFunc) {
+func FailFast(ctx context.Context, opts ...Option) (*Group, context.CancelFunc) {
 	ctx, cancel := context.WithCancel(ctx)
-	return New(ctx, opts...), cancel
+	foldFunc := FoldFunc(func(acc, err error) error {
+		if err != nil {
+			cancel()
+		}
+
+		// TakeFirst because other goroutines would be context.Canceled.
+		return TakeFirst(acc, err)
+	})
+	return New(ctx, append(opts, foldFunc)...), cancel
 }
 
 func (g *Group) Go(f func(ctx context.Context) error) {
