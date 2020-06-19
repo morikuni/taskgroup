@@ -3,85 +3,50 @@ package taskgroup_test
 import (
 	"context"
 	"errors"
-	"sync/atomic"
+	"reflect"
 	"testing"
-	"time"
 
 	"github.com/morikuni/taskgroup"
 )
 
-func TestGroup(t *testing.T) {
-	g := taskgroup.New(context.Background())
+func equal(t *testing.T, want, got interface{}) {
+	t.Helper()
 
-	var counter int64
-	g.Go(func(ctx context.Context) error {
-		atomic.AddInt64(&counter, 1)
-		return errors.New("a")
-	})
-	g.Go(func(ctx context.Context) error {
-		atomic.AddInt64(&counter, 1)
-		return nil
-	})
-	g.Go(func(ctx context.Context) error {
-		atomic.AddInt64(&counter, 1)
-		return errors.New("b")
-	})
-	g.Go(func(ctx context.Context) error {
-		atomic.AddInt64(&counter, 1)
-		return nil
-	})
-
-	err := g.Wait()
-	if err == nil {
-		t.Fatal("want error")
+	if !reflect.DeepEqual(want, got) {
+		t.Errorf("want %#v but got %#v", want, got)
 	}
+}
+func noError(t *testing.T, err error) {
+	t.Helper()
 
-	_, ok := err.(*taskgroup.MultiError)
-	if !ok {
-		t.Fatal("want MultiError")
-	}
-
-	if want, got := int64(4), counter; want != got {
-		t.Fatalf("want %v, got %v", want, got)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
-func TestFailFast(t *testing.T) {
-	g, cancel := taskgroup.FailFast(context.Background())
-	defer cancel()
+func TestGroup(t *testing.T) {
+	g := taskgroup.New()
 
-	errA := errors.New("a")
-
-	var counter int64
-	g.Go(func(ctx context.Context) error {
-		atomic.AddInt64(&counter, 1)
-		return errA
-	})
-	g.Go(func(ctx context.Context) error {
-		atomic.AddInt64(&counter, 1)
+	count := 0
+	g.AddFunc(func(ctx context.Context) error {
+		count++
+		equal(t, 1, count)
 		return nil
 	})
-	g.Go(func(ctx context.Context) error {
-		time.Sleep(time.Millisecond)
-		atomic.AddInt64(&counter, 1)
-		return errors.New("b")
+	g.AddFunc(func(ctx context.Context) error {
+		count++
+		equal(t, 2, count)
+		return errors.New("hello world")
 	})
-	g.Go(func(ctx context.Context) error {
-		select {
-		case <-time.After(time.Second):
-		case <-ctx.Done():
-			return nil
-		}
-		t.Fatal("should not come here")
+	g.AddFunc(func(ctx context.Context) error {
+		count++
+		equal(t, 3, count)
 		return nil
 	})
 
-	err := g.Wait()
-	if want, got := errA, err; want != got {
-		t.Fatalf("want %#v, got %#v", want, got)
-	}
+	equal(t, 0, count)
 
-	if want, got := int64(3), counter; want != got {
-		t.Fatalf("want %v, got %v", want, got)
-	}
+	err := g.Run(context.Background())
+	equal(t, errors.New("hello world"), err)
+	equal(t, 3, count)
 }
