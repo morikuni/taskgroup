@@ -64,7 +64,36 @@ func TestWithGoroutine(t *testing.T) {
 
 	equal(t, int64(0), count)
 
-	err := g.Run(context.Background())
+	err := g.Process(context.Background())
 	equal(t, errors.New("hello world"), err)
 	equal(t, int64(3), count)
+}
+
+func TestWithRecover(t *testing.T) {
+	g := taskgroup.New(
+		taskgroup.WithRecover(),
+	)
+
+	count := 0
+	g.AddFunc(func(ctx context.Context) error {
+		count++
+		equal(t, 1, count)
+		return nil
+	})
+	g.AddFunc(func(ctx context.Context) error {
+		count++
+		equal(t, 2, count)
+		panic("hello")
+	})
+	g.AddFunc(func(ctx context.Context) error {
+		count++
+		equal(t, 3, count)
+		return nil
+	})
+
+	equal(t, 0, count)
+
+	err := g.Process(context.Background())
+	equal(t, &taskgroup.PanicError{Raw: "hello"}, err)
+	equal(t, 3, count)
 }

@@ -16,6 +16,28 @@ func New(opts ...Option) *Group {
 	}
 }
 
+func FailFast(ctx context.Context, opts ...Option) (*Group, context.Context, context.CancelFunc) {
+	ctx, cancel := context.WithCancel(ctx)
+	defaultOpts := []Option{
+		WithGoroutine(),
+		WithRecover(),
+		WithFoldFunc(func(acc, err error) error {
+			if acc != nil {
+				return acc
+			}
+
+			if err != nil {
+				cancel()
+			}
+
+			return err
+		}),
+	}
+	g := New(append(defaultOpts, opts...)...)
+
+	return g, ctx, cancel
+}
+
 func (g *Group) Add(t Task) {
 	g.tasks = append(g.tasks, t)
 }
@@ -24,45 +46,42 @@ func (g *Group) AddFunc(f func(ctx context.Context) error) {
 	g.tasks = append(g.tasks, TaskFunc(f))
 }
 
-func (g *Group) Run(ctx context.Context) error {
+func (g *Group) Process(ctx context.Context) error {
 	var (
 		result error
 		mu     sync.Mutex
-		count  int
-		done   chan struct{}
+		count  = len(g.tasks)
+		done   = make(chan struct{})
 	)
 
-	report := func(err error) {
-		mu.Lock()
-		defer mu.Unlock()
-		result = g.config.fold(result, err)
+	report := func() func(err error) {
+		called := false
+		return func(err error) {
+			mu.Lock()
+			defer mu.Unlock()
 
-		count--
-		if done != nil && count == 0 {
-			close(done)
+			// ignore except first call.
+			if called {
+				return
+			}
+			called = true
+
+			result = g.config.fold(result, err)
+
+			count--
+			if count == 0 {
+				close(done)
+			}
 		}
 	}
 
 	for _, t := range g.tasks {
-		count++
 		if g.config.interceptor == nil {
-			g.config.runner.Run(ctx, report, t)
+			g.config.runner.Run(ctx, report(), t)
 		} else {
-			g.config.interceptor(ctx, report, t, g.config.runner)
+			g.config.interceptor(ctx, report(), t, g.config.runner)
 		}
 	}
-
-	mu.Lock()
-
-	// check if there is tasks still running
-	// in case all process has completed
-	// before done channel is created.
-	if count == 0 {
-		return result
-	}
-
-	done = make(chan struct{})
-	mu.Unlock()
 
 	<-done
 

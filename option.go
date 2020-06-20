@@ -28,3 +28,15 @@ func evaluateOptions(opts []Option) *config {
 type Option interface {
 	apply(*config)
 }
+
+type optionFunc func(*config)
+
+func (f optionFunc) apply(c *config) {
+	f(c)
+}
+
+func WithFoldFunc(f func(acc, err error) error) Option {
+	return optionFunc(func(c *config) {
+		c.fold = f
+	})
+}

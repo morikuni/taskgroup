@@ -1,6 +1,9 @@
 package taskgroup
 
-import "context"
+import (
+	"context"
+	"fmt"
+)
 
 type Interceptor func(ctx context.Context, report func(error), t Task, r Runner)
 
@@ -36,5 +39,32 @@ func WithGoroutine() Interceptor {
 		go func() {
 			r.Run(ctx, report, t)
 		}()
+	}
+}
+
+type PanicError struct {
+	Raw interface{}
+}
+
+func (pe *PanicError) Error() string {
+	return fmt.Sprintf("panic error: %v", pe.Raw)
+}
+
+func (pe *PanicError) Unwrap() error {
+	if err, ok := pe.Raw.(error); ok {
+		return err
+	}
+	return nil
+}
+
+func WithRecover() Interceptor {
+	return func(ctx context.Context, report func(error), t Task, r Runner) {
+		defer func() {
+			r := recover()
+			if r != nil {
+				report(&PanicError{r})
+			}
+		}()
+		r.Run(ctx, report, t)
 	}
 }
