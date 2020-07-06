@@ -3,6 +3,7 @@ package taskgroup
 import (
 	"context"
 	"fmt"
+	"time"
 )
 
 type Interceptor func(ctx context.Context, report func(error), t Task, r Runner)
@@ -10,6 +11,7 @@ type Interceptor func(ctx context.Context, report func(error), t Task, r Runner)
 func (i Interceptor) apply(c *config) {
 	if c.interceptor == nil {
 		c.interceptor = i
+		return
 	}
 	c.interceptor = ChainInterceptor(c.interceptor, i)
 }
@@ -66,5 +68,40 @@ func WithRecover() Interceptor {
 			}
 		}()
 		r.Run(ctx, report, t)
+	}
+}
+
+func WithRetry(strategy func(context.Context, int, error) (time.Duration, bool)) Interceptor {
+	return func(ctx context.Context, report func(error), t Task, r Runner) {
+		var n int
+		for {
+			n++
+
+			var result error
+			r.Run(ctx, func(err error) {
+				result = err
+			}, t)
+
+			if result == nil {
+				report(nil)
+				return
+			}
+
+			backoff, ok := strategy(ctx, n, result)
+			if !ok {
+				report(result)
+				return
+			}
+
+			t := time.NewTimer(backoff)
+			select {
+			case <-ctx.Done():
+				t.Stop()
+				report(ctx.Err())
+				return
+			case <-t.C:
+				// next loop
+			}
+		}
 	}
 }

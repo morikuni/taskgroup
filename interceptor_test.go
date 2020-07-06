@@ -97,3 +97,36 @@ func TestWithRecover(t *testing.T) {
 	equal(t, &taskgroup.PanicError{Raw: "hello"}, err)
 	equal(t, 3, count)
 }
+
+func TestWithRetry(t *testing.T) {
+	retry3 := func(_ context.Context, n int, _ error) (time.Duration, bool) {
+		if n <= 3 {
+			return 0, true
+		}
+		return 0, false
+	}
+
+	g := taskgroup.New(
+		taskgroup.WithRetry(retry3),
+	)
+
+	count := int64(0)
+	g.AddFunc(func(ctx context.Context) error {
+		atomic.AddInt64(&count, 1)
+		return nil
+	})
+	g.AddFunc(func(ctx context.Context) error {
+		atomic.AddInt64(&count, 1)
+		return errors.New("hello")
+	})
+	g.AddFunc(func(ctx context.Context) error {
+		atomic.AddInt64(&count, 1)
+		return errors.New("world")
+	})
+
+	equal(t, int64(0), count)
+
+	err := g.Process(context.Background())
+	equal(t, errors.New("hello"), err)
+	equal(t, int64(9), count)
+}
